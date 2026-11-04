@@ -135,6 +135,24 @@ def fetch_prices_by_search(skins: list[dict], delay: float) -> dict[str, float]:
     return prices
 
 
+def reuse_published(url: str, collections: set[str], out: str) -> bool:
+    """Kopierar den publicerade data.json om den gäller samma collections.
+    Då slipper en ändring av sidan hämta om alla priser."""
+    try:
+        old = get_json(url, retries=2)
+    except Exception as e:  # noqa: BLE001 - finns ingen publicerad version hämtas allt
+        print(f"kunde inte läsa publicerad data ({e}), hämtar nya priser")
+        return False
+    old_cols = {s.get("collection") for s in old.get("skins", [])}
+    if old_cols != collections or not old.get("prices"):
+        print("collections har ändrats, hämtar nya priser")
+        return False
+    Path(out).write_text(json.dumps(old, ensure_ascii=False, separators=(",", ":")),
+                         encoding="utf-8")
+    print(f"återanvände priser från {old.get('updated')} ({len(old['prices'])} st)")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="site/data.json")
@@ -142,6 +160,8 @@ def main() -> int:
                     help="JSON-lista med collections att hämta priser för (tom = alla)")
     ap.add_argument("--max-pages", type=int, default=800)
     ap.add_argument("--delay", type=float, default=1.2)
+    ap.add_argument("--reuse", metavar="URL",
+                    help="återanvänd publicerad data.json om den har samma collections")
     args = ap.parse_args()
 
     skins = load_skins()
@@ -156,6 +176,8 @@ def main() -> int:
         if missing:
             print(f"Hittade inte: {missing}", file=sys.stderr)
             return 1
+        if args.reuse and reuse_published(args.reuse, set(found), args.out):
+            return 0
         prices = fetch_prices_by_search(skins, args.delay)
     else:
         prices = fetch_tradeit_prices(wanted_names(skins), args.max_pages, args.delay)

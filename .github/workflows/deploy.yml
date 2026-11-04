@@ -31,7 +31,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Hämta skindata och tradeit-priser
-        run: python scripts/fetch_data.py --out site/data.json
+        # Vid kodändringar (push) återanvänds publicerade priser om collections
+        # är oförändrade. Schemat och manuella körningar hämtar alltid nya.
+        env:
+          EVENT: ${{ github.event_name }}
+          PUBLISHED: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data.json
+        run: |
+          args=(--out site/data.json)
+          [ "$EVENT" = "push" ] && args+=(--reuse "$PUBLISHED")
+          python scripts/fetch_data.py "${args[@]}"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
