@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  computeTradeUp, evaluate, wearOf, normalizeFloat, marketName, distanceToWearEdge,
+  computeTradeUp, evaluate, wearOf, normalizeFloat, marketName, distanceToWearEdge, pickBuy, pickSell,
 } from "../site/tradeup.js";
 
 // Påhittade testskins (namnen spelar ingen roll för räkningen).
@@ -92,6 +92,32 @@ test("evaluate: saknade priser markeras", () => {
   const e = evaluate(r, [1, 1, 1, 1, 1, 1, 1, 1, 1, null], () => null);
   assert.equal(e.pricedShare, 0);
   assert.equal(e.missingInputPrices, 1);
+});
+
+test("pickBuy: vald sajt eller billigast", () => {
+  const p = { tradeit: 1.0, pirateswap: 0.8 };
+  assert.deepEqual(pickBuy(p, "tradeit"), { price: 1.0, source: "tradeit" });
+  assert.deepEqual(pickBuy(p, "cheapest"), { price: 0.8, source: "pirateswap" });
+  assert.deepEqual(pickBuy({ tradeit: 1.0, pirateswap: null }, "cheapest"), { price: 1.0, source: "tradeit" });
+  assert.equal(pickBuy({ tradeit: null, pirateswap: null }, "cheapest"), null);
+  assert.equal(pickBuy({ tradeit: 1, pirateswap: null }, "pirateswap"), null);
+});
+
+test("pickSell: egen divisor per sajt, bäst = högst inbytesvärde", () => {
+  const div = { tradeit: 1.15, pirateswap: 1.12 };
+  // 2.30/1.15 = 2.00 mot 2.24/1.12 = 2.00 -> lika; 2.28/1.12 ≈ 2.036 vinner
+  const s = pickSell({ tradeit: 2.3, pirateswap: 2.28 }, div, "best");
+  assert.equal(s.source, "pirateswap");
+  assert.ok(Math.abs(s.value - 2.28 / 1.12) < 1e-12);
+  assert.equal(pickSell({ tradeit: 2.3, pirateswap: 2.28 }, div, "tradeit").value, 2);
+});
+
+test("evaluate med {list, value, source}", () => {
+  const inputs = ten(() => ({ skin: A1, float: 0.1 }));
+  const r = computeTradeUp(inputs, ALL);
+  const e = evaluate(r, Array(10).fill(0.1), () => ({ list: 2.24, value: 2, source: "pirateswap" }));
+  assert.ok(Math.abs(e.ev - 2) < 1e-12);
+  assert.equal(e.rows[0].source, "pirateswap");
 });
 
 test("marknadsnamn", () => {

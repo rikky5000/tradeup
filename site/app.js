@@ -1,6 +1,11 @@
 import {
   RARITIES, INPUT_COUNT, computeTradeUp, evaluate, wearOf, marketName, distanceToWearEdge,
+  pickBuy, pickSell,
 } from "./tradeup.js";
+import { buildBookmarklet, sanitizePirateswap, isPirateswapOrigin } from "./pirateswap.js";
+
+const PS_KEY = "tu-pirateswap";
+const SITE_SHORT = { tradeit: "TI", pirateswap: "PS" };
 
 const $ = (id) => document.getElementById(id);
 const usd = (v) => (v == null ? "–" : `${v < 0 ? "−" : ""}$${Math.abs(v).toFixed(2)}`);
@@ -13,22 +18,45 @@ const shortCollection = (c) => c.replace(/^The | Collection$/g, "");
 let skins = [];
 let byName = new Map();
 let prices = {};
+// Pirateswap-priser från bokmärket: {updated, prices}. Sparas i webbläsaren.
+let ps = loadPirateswap();
 // rows[i] = {name, float, price (manuellt pris eller null)}
 let rows = Array.from({ length: INPUT_COUNT }, () => ({ name: "", float: "", price: null }));
 
-function priceOf(name) {
-  const p = prices[name];
-  return typeof p === "number" ? p : null;
+function loadPirateswap() {
+  try {
+    return JSON.parse(localStorage.getItem(PS_KEY)) || { updated: null, prices: {} };
+  } catch {
+    return { updated: null, prices: {} };
+  }
+}
+
+function sitePrices(name) {
+  const t = prices[name];
+  const p = ps.prices[name];
+  return {
+    tradeit: typeof t === "number" ? t : null,
+    pirateswap: typeof p === "number" ? p : null,
+  };
 }
 
 function stattrak() { return $("st").checked; }
-function divisor() { return Number($("div").value) || 1.15; }
+function divisors() {
+  return {
+    tradeit: Number($("div").value) || 1.15,
+    pirateswap: Number($("divps").value) || 1.12,
+  };
+}
 
-function autoPrice(row) {
+function autoBuy(row) {
   const skin = byName.get(row.name);
   const f = Number(row.float);
   if (!skin || row.float === "" || Number.isNaN(f)) return null;
-  return priceOf(marketName(skin, wearOf(f), stattrak()));
+  return pickBuy(sitePrices(marketName(skin, wearOf(f), stattrak())), $("buy").value);
+}
+
+function autoPrice(row) {
+  return autoBuy(row)?.price ?? null;
 }
 
 function updateDatalist() {
@@ -129,11 +157,15 @@ function buildInputs() {
       const color = skin ? RARITY_COLORS[skin.rarity] : "";
       name.style.borderLeftColor = color;
       name.style.color = color;
-      const auto = autoPrice(row);
+      const auto = autoBuy(row);
       price.classList.toggle("manual", row.price != null);
       if (row.price == null) {
-        price.value = auto != null ? auto.toFixed(2) : "";
+        price.value = auto ? auto.price.toFixed(2) : "";
         price.placeholder = skin && row.float !== "" ? "saknas" : "";
+        price.title = auto ? `Pris från ${auto.source}` : "";
+        if (auto) meta.textContent += ` · ${SITE_SHORT[auto.source]}`;
+      } else {
+        price.title = "Eget pris";
       }
     };
     el.refresh = refresh;
@@ -223,7 +255,9 @@ function recalc() {
   }
 
   const costs = rows.map((r) => (r.price != null ? r.price : autoPrice(r)));
-  const e = evaluate(result, costs, priceOf, { intakeDivisor: divisor(), stattrak: stattrak() });
+  const div = divisors();
+  const sell = $("sell").value;
+  const e = evaluate(result, costs, (n) => pickSell(sitePrices(n), div, sell), { stattrak: stattrak() });
 
   const cards = document.createElement("div");
   cards.className = "cards";
@@ -255,7 +289,7 @@ function recalc() {
   wrap.style.marginTop = "14px";
   const t = document.createElement("table");
   t.innerHTML = "<thead><tr><th>Outcome</th><th>Chans</th><th>Float</th><th>Wear</th>"
-    + "<th>Listpris</th><th>Inbytesvärde</th><th>Vinst</th></tr></thead>";
+    + "<th>Tradeit</th><th>Pirateswap</th><th>Inbytesvärde</th><th>Vinst</th></tr></thead>";
   const tb = document.createElement("tbody");
   for (const r of e.rows) {
     const tr = document.createElement("tr");
@@ -275,8 +309,10 @@ function recalc() {
     cell(tr, `${r.float.toFixed(5)}${near ? " ⚠" : ""}`, near ? "warn" : "").title = near
       ? "Mycket nära en wear-gräns – avrundning kan ge en annan wear." : "";
     cell(tr, r.wear);
-    cell(tr, usd(r.list));
-    cell(tr, usd(r.value));
+    const sp = sitePrices(r.name);
+    cell(tr, usd(sp.tradeit), r.source === "tradeit" ? "picked" : "");
+    cell(tr, usd(sp.pirateswap), r.source === "pirateswap" ? "picked" : "");
+    cell(tr, r.value == null ? "–" : `${usd(r.value)} ${SITE_SHORT[r.source]}`);
     cell(tr, signedUsd(r.profit),
       r.profit == null ? "" : r.profit >= 0 ? "good" : "bad");
     tb.append(tr);
@@ -290,7 +326,10 @@ function recalc() {
 function saveHash() {
   const state = {
     st: stattrak() ? 1 : 0,
-    d: divisor(),
+    d: divisors().tradeit,
+    dp: divisors().pirateswap,
+    b: $("buy").value,
+    s: $("sell").value,
     r: rows.map((r) => [r.name, r.float, r.price]),
   };
   const s = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
@@ -298,17 +337,88 @@ function saveHash() {
 }
 
 function loadHash() {
-  if (!location.hash) return;
+  if (!location.hash || location.hash === "#ps-import") return;
   try {
     const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
     $("st").checked = !!state.st;
     if (state.d) $("div").value = state.d;
+    if (state.dp) $("divps").value = state.dp;
+    if (state.b) $("buy").value = state.b;
+    if (state.s) $("sell").value = state.s;
     (state.r || []).slice(0, INPUT_COUNT).forEach(([name, float, price], i) => {
       rows[i] = { name: byName.has(name) ? name : "", float: float ?? "", price: price ?? null };
     });
   } catch {
     // Trasig länk – börja tomt.
   }
+}
+
+function savePirateswap(next) {
+  ps = next;
+  try {
+    localStorage.setItem(PS_KEY, JSON.stringify(ps));
+  } catch {
+    // Privat läge e.d. – priserna gäller då bara tills sidan laddas om.
+  }
+  showPirateswapStatus();
+  refreshAll();
+}
+
+function showPirateswapStatus() {
+  const n = Object.keys(ps.prices).length;
+  const el = $("psStatus");
+  if (!n) {
+    el.textContent = "Inga Pirateswap-priser inlästa än.";
+    el.className = "small";
+    return;
+  }
+  const when = new Date(ps.updated);
+  const hours = (Date.now() - when.getTime()) / 36e5;
+  el.textContent = `${n} Pirateswap-priser, hämtade ${when.toLocaleString("sv-SE")}`
+    + (hours > 24 ? ` – över ${Math.floor(hours / 24)} dygn gamla, hämta nya.` : "");
+  el.className = hours > 24 ? "warn" : "small";
+}
+
+function setupPirateswap() {
+  const calcUrl = `${location.origin}${location.pathname}`;
+  $("psLink").href = buildBookmarklet(skins, calcUrl);
+  $("psLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    alert("Dra länken till bokmärkesfältet i stället för att klicka. "
+      + "Öppna sedan pirateswap.com och klicka på bokmärket där.");
+  });
+  showPirateswapStatus();
+
+  // Priser från bokmärket på pirateswap.com.
+  window.addEventListener("message", (e) => {
+    if (!isPirateswapOrigin(e.origin)) return;
+    const clean = sanitizePirateswap(e.data);
+    if (!clean) return;
+    savePirateswap(clean);
+    e.source?.postMessage({ type: "tradeup-imported", count: Object.keys(clean.prices).length }, e.origin);
+  });
+  // Öppnades sidan av bokmärket? Säg till att vi är redo att ta emot.
+  if (window.opener) {
+    try { window.opener.postMessage({ type: "tradeup-ready" }, "*"); } catch { /* stängt fönster */ }
+  }
+
+  $("psImport").addEventListener("click", () => {
+    let data;
+    try {
+      data = JSON.parse($("psPaste").value);
+    } catch {
+      alert("Texten är inte giltig – kopiera igen från bokmärkets ruta.");
+      return;
+    }
+    const clean = sanitizePirateswap(data);
+    if (!clean) {
+      alert("Hittade inga Pirateswap-priser i texten.");
+      return;
+    }
+    $("psPaste").value = "";
+    savePirateswap(clean);
+  });
+  $("psClear").addEventListener("click", () => savePirateswap({ updated: null, prices: {} }));
 }
 
 async function init() {
@@ -334,6 +444,10 @@ async function init() {
 
   $("st").addEventListener("change", () => { updateDatalist(); refreshAll(); });
   $("div").addEventListener("input", recalc);
+  $("divps").addEventListener("input", recalc);
+  $("buy").addEventListener("change", refreshAll);
+  $("sell").addEventListener("change", recalc);
+  setupPirateswap();
   $("copy1").addEventListener("click", () => {
     rows = rows.map(() => ({ ...rows[0] }));
     buildInputs();

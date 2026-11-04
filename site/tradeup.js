@@ -107,9 +107,35 @@ export function computeTradeUp(inputs, allSkins, { stattrak = false } = {}) {
   return { errors, outcomes: list, avgNorm };
 }
 
+export const SITES = ["tradeit", "pirateswap"];
+
 /**
- * Lägger på priser. Kostnad = listpris för inputs. Värde för outcome =
- * listpris / intakeDivisor (vad tradeit ger när du byter in skinnet).
+ * Inköpspris för en input. prices = {tradeit: listpris|null, pirateswap: ...}.
+ * mode = en sajt eller "cheapest" (billigast av de som har pris).
+ */
+export function pickBuy(prices, mode) {
+  const options = (mode === "cheapest" ? SITES : [mode])
+    .filter((s) => prices[s] > 0)
+    .map((s) => ({ price: prices[s], source: s }));
+  if (!options.length) return null;
+  return options.reduce((a, b) => (b.price < a.price ? b : a));
+}
+
+/**
+ * Inbytesvärde för en outcome: listpris / sajtens divisor.
+ * mode = en sajt eller "best" (högst inbytesvärde).
+ */
+export function pickSell(prices, divisors, mode) {
+  const options = (mode === "best" ? SITES : [mode])
+    .filter((s) => prices[s] > 0)
+    .map((s) => ({ list: prices[s], value: prices[s] / divisors[s], source: s }));
+  if (!options.length) return null;
+  return options.reduce((a, b) => (b.value > a.value ? b : a));
+}
+
+/**
+ * Lägger på priser. Kostnad = summan av inputs. priceOf(namn) ger antingen ett
+ * listpris (värde = listpris / intakeDivisor) eller {list, value, source}.
  */
 export function evaluate(result, inputCosts, priceOf, { intakeDivisor = 1.15, stattrak = false } = {}) {
   const cost = inputCosts.reduce((a, c) => a + (c || 0), 0);
@@ -119,14 +145,18 @@ export function evaluate(result, inputCosts, priceOf, { intakeDivisor = 1.15, st
   let pPriced = 0;
   const rows = result.outcomes.map((o) => {
     const name = marketName(o.skin, o.wear, stattrak);
-    const list = priceOf(name);
-    const value = list != null ? list / intakeDivisor : null;
+    const p = priceOf(name);
+    let list = null;
+    let value = null;
+    let source = null;
+    if (p && typeof p === "object") ({ list = null, value = null, source = null } = p);
+    else if (p != null) [list, value] = [p, p / intakeDivisor];
     if (value != null) {
       ev += o.prob * value;
       pPriced += o.prob;
       if (value > cost) pProfit += o.prob;
     }
-    return { ...o, name, list, value, profit: value != null ? value - cost : null };
+    return { ...o, name, list, value, source, profit: value != null ? value - cost : null };
   });
   return {
     rows,

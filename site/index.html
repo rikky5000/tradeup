@@ -33,6 +33,14 @@
   .in-row .idx { color: var(--muted); text-align: right; }
   .in-row .skin { width: 100%; border-left: 4px solid var(--line); font-weight: 500; }
   .filters { margin-bottom: 12px; }
+  .steps { padding-left: 18px; margin: 8px 0; }
+  .steps li { margin: 6px 0; }
+  .bm { display: inline-block; margin-left: 6px; padding: 5px 10px; border-radius: 6px;
+    background: var(--accent); color: #111; font-weight: 600; text-decoration: none; cursor: grab; }
+  textarea { width: 100%; font: 12px monospace; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-top: 6px; }
+  td.picked { color: var(--text); font-weight: 600; }
+  td.picked::after { content: " ✓"; color: var(--good); }
   .filters select { min-width: 0; max-width: 100%; }
   td:first-child { padding-left: 8px; }
   .in-row .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
@@ -78,12 +86,46 @@
   <section class="panel">
     <div class="row">
       <label><input type="checkbox" id="st"> StatTrak™</label>
-      <label>Inbytesvärde: listpris ÷ <input id="div" class="num" type="number" step="0.01" min="1" value="1.15"></label>
+      <label>Köp inputs på
+        <select id="buy">
+          <option value="tradeit">tradeit</option>
+          <option value="pirateswap">Pirateswap</option>
+          <option value="cheapest">billigast</option>
+        </select></label>
+      <label>Byt in outcomes på
+        <select id="sell">
+          <option value="tradeit">tradeit</option>
+          <option value="pirateswap">Pirateswap</option>
+          <option value="best">bäst betalt</option>
+        </select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Inbyte tradeit: listpris ÷ <input id="div" class="num" type="number" step="0.01" min="1" value="1.15"></label>
+      <label>Pirateswap: listpris ÷ <input id="divps" class="num" type="number" step="0.01" min="1" value="1.12"></label>
       <button id="copy1">Kopiera rad 1 till alla</button>
       <button id="clear">Rensa</button>
     </div>
-    <p class="small">Kostnad = tradeits listpris för inputs. Värde för outcome = listpris ÷ inbytesdivisorn, alltså vad tradeit ger när du byter in den.
-      Priset fylls i automatiskt utifrån wear. Skriv ett eget pris för att låsa det (orange ram); töm fältet för att gå tillbaka till tradeit.</p>
+    <p class="small">Kostnad = listpris för inputs på vald sajt. Värde för outcome = listpris ÷ sajtens divisor, alltså vad sajten ger när du byter in.
+      Priset fylls i automatiskt utifrån wear (TI = tradeit, PS = Pirateswap). Skriv ett eget pris för att låsa det (orange ram); töm fältet för att gå tillbaka.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Pirateswap-priser</h2>
+    <p id="psStatus" class="small"></p>
+    <ol class="small steps">
+      <li>Dra den här knappen till bokmärkesfältet (en gång, och igen när collections ändras):
+        <a id="psLink" class="bm" href="#">⚓ Hämta Pirateswap-priser</a></li>
+      <li>Öppna <b>pirateswap.com</b> och klicka på bokmärket. Välj collections och tryck <b>Hämta</b>.</li>
+      <li>När den är klar: tryck <b>Skicka till kalkylatorn</b>. Priserna sparas i den här webbläsaren.</li>
+    </ol>
+    <details class="small">
+      <summary>Klistra in manuellt / rensa</summary>
+      <textarea id="psPaste" rows="3" placeholder="Klistra in texten från bokmärkets Kopiera-knapp"></textarea>
+      <div class="row" style="margin-top:6px">
+        <button id="psImport">Importera</button>
+        <button id="psClear">Rensa Pirateswap-priser</button>
+      </div>
+    </details>
   </section>
 
   <section class="panel">
@@ -105,7 +147,7 @@
 
   <p class="small">Regler enligt communityns mätningar efter CS2-uppdateringen 22 okt 2025 (Valve publicerar inte formlerna):
     chans = (inputs från collectionen ÷ 10) ÷ (antal skins i nästa rarity), outputfloat = min + snitt av normaliserade inputfloats × (max − min).
-    Skindata: ByMykel/CSGO-API. Priser: tradeit.gg (lägsta listpris i lager).</p>
+    Skindata: ByMykel/CSGO-API. Priser: tradeit.gg (hämtas automatiskt) och Pirateswap (via bokmärket), lägsta listpris i lager.</p>
 </main>
 <script type="module" src="app.js"></script>
 </body>
