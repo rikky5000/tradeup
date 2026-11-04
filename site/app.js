@@ -6,6 +6,9 @@ const $ = (id) => document.getElementById(id);
 const usd = (v) => (v == null ? "–" : `${v < 0 ? "−" : ""}$${Math.abs(v).toFixed(2)}`);
 const signedUsd = (v) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${usd(v)}`);
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
+// Samma färger som i spelet, i samma ordning som RARITIES.
+const RARITY_COLORS = ["#b0c3d9", "#5e98d9", "#4b69ff", "#8847ff", "#d32ce6", "#eb4b4b"];
+const shortCollection = (c) => c.replace(/^The | Collection$/g, "");
 
 let skins = [];
 let byName = new Map();
@@ -30,16 +33,43 @@ function autoPrice(row) {
 
 function updateDatalist() {
   const first = rows.map((r) => byName.get(r.name)).find(Boolean);
+  const col = $("fcol").value;
+  const rar = $("frar").value;
   const list = skins
     .filter((s) => (!first || s.rarity === first.rarity) && s.rarity < RARITIES.length - 1)
-    .filter((s) => !stattrak() || s.stattrak);
+    .filter((s) => !stattrak() || s.stattrak)
+    .filter((s) => !col || s.collection === col)
+    .filter((s) => rar === "" || s.rarity === Number(rar))
+    .sort((a, b) => a.rarity - b.rarity || a.name.localeCompare(b.name));
   const dl = $("skinlist");
   dl.replaceChildren(...list.map((s) => {
     const o = document.createElement("option");
     o.value = s.name;
-    o.label = `${RARITIES[s.rarity]} · ${s.collection}`;
+    o.label = `${RARITIES[s.rarity]} · ${shortCollection(s.collection)}`;
     return o;
   }));
+}
+
+function buildFilters() {
+  const cols = [...new Set(skins.map((s) => s.collection))].sort();
+  $("fcol").replaceChildren(
+    new Option("Alla collections", ""),
+    ...cols.map((c) => new Option(shortCollection(c), c)),
+  );
+  $("frar").replaceChildren(
+    new Option("Alla rarities", ""),
+    ...RARITIES.slice(0, -1).map((r, i) => {
+      const o = new Option(r, String(i));
+      o.style.color = RARITY_COLORS[i];
+      return o;
+    }),
+  );
+  const paint = () => {
+    const v = $("frar").value;
+    $("frar").style.color = v === "" ? "" : RARITY_COLORS[Number(v)];
+  };
+  $("fcol").addEventListener("change", updateDatalist);
+  $("frar").addEventListener("change", () => { paint(); updateDatalist(); });
 }
 
 function buildInputs() {
@@ -86,10 +116,13 @@ function buildInputs() {
       const f = Number(row.float);
       const parts = [];
       if (skin && row.float !== "" && !Number.isNaN(f)) parts.push(wearOf(f));
-      if (skin) parts.push(skin.collection.replace(/^The | Collection$/g, ""));
+      if (skin) parts.push(shortCollection(skin.collection));
       if (skin) parts.push(`${skin.min}–${skin.max}`);
       meta.textContent = parts.join(" · ");
-      meta.title = meta.textContent;
+      meta.title = skin ? `${RARITIES[skin.rarity]} · ${meta.textContent}` : "";
+      const color = skin ? RARITY_COLORS[skin.rarity] : "";
+      name.style.borderLeftColor = color;
+      name.style.color = color;
       const auto = autoPrice(row);
       price.classList.toggle("manual", row.price != null);
       if (row.price == null) {
@@ -211,9 +244,11 @@ function recalc() {
   for (const r of e.rows) {
     const tr = document.createElement("tr");
     const first = cell(tr, r.name);
+    first.style.color = RARITY_COLORS[r.skin.rarity];
+    first.style.borderLeft = `3px solid ${RARITY_COLORS[r.skin.rarity]}`;
     const sub = document.createElement("div");
     sub.className = "small";
-    sub.textContent = r.skin.collection;
+    sub.textContent = `${RARITIES[r.skin.rarity]} · ${shortCollection(r.skin.collection)}`;
     first.append(sub);
     const c = cell(tr, pct(r.prob));
     const bar = document.createElement("div");
@@ -275,6 +310,7 @@ async function init() {
     $("status").textContent = `Kunde inte ladda data.json (${err}).`;
     return;
   }
+  buildFilters();
   loadHash();
   buildInputs();
   updateDatalist();

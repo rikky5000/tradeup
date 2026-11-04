@@ -31,7 +31,10 @@
   .in-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px 110px 96px 30px;
     gap: 6px; align-items: center; }
   .in-row .idx { color: var(--muted); text-align: right; }
-  .in-row .skin { width: 100%; }
+  .in-row .skin { width: 100%; border-left: 4px solid var(--line); font-weight: 500; }
+  .filters { margin-bottom: 12px; }
+  .filters select { min-width: 0; max-width: 100%; }
+  td:first-child { padding-left: 8px; }
   .in-row .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .in-row .price.manual { border-color: var(--accent); }
@@ -78,6 +81,11 @@
 
   <section class="panel">
     <h2>Inputs</h2>
+    <div class="row filters">
+      <label>Visa i skinlistan:</label>
+      <select id="fcol" aria-label="Filtrera på collection"></select>
+      <select id="frar" aria-label="Filtrera på rarity"></select>
+    </div>
     <div class="in-row head"><span></span><span>Skin</span><span>Float</span><span>Wear / collection</span><span>Pris $</span><span></span></div>
     <div class="inputs" id="inputs"></div>
     <datalist id="skinlist"></datalist>
