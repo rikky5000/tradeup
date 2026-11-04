@@ -44,7 +44,8 @@ export function psMain(P) {
     + "border-radius:10px;padding:14px;font:13px system-ui,sans-serif;"
     + "box-shadow:0 8px 30px rgba(0,0,0,.5);text-align:left");
   box.id = "tu-ps";
-  box.append(el("div", "font-weight:600;font-size:14px;margin-bottom:6px", "Fånga Pirateswap-priser"));
+  box.append(el("div", "font-weight:600;font-size:14px;margin-bottom:6px",
+    `Fånga Pirateswap-priser · v${P.v}`));
   box.append(el("div", "font-size:12px;color:#8b95a5;margin-bottom:8px",
     "Sök under Our Items som vanligt – priserna sparas automatiskt. Sortera på pris ↑ "
     + "(billigast först) så fångas lägsta priset. Klicka på ett skin nedan för att söka på det."));
@@ -205,9 +206,13 @@ export function psMain(P) {
   render();
 }
 
+// Höj vid varje ändring av psMain, så att användaren ser om bokmärket är gammalt.
+export const BOOKMARKLET_VERSION = 4;
+
 /** Bygger javascript:-länken med skinlistan (namn, collection, finns i StatTrak). */
 export function buildBookmarklet(skins, calcUrl) {
   const P = {
+    v: BOOKMARKLET_VERSION,
     calc: calcUrl,
     skins: skins.map((s) => [s.name, s.collection.replace(/^The | Collection$/g, ""), s.stattrak ? 1 : 0]),
   };

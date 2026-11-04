@@ -2,7 +2,9 @@ import {
   RARITIES, INPUT_COUNT, computeTradeUp, evaluate, wearOf, marketName, distanceToWearEdge,
   pickBuy, pickSell,
 } from "./tradeup.js";
-import { buildBookmarklet, sanitizePirateswap, isPirateswapOrigin } from "./pirateswap.js";
+import {
+  buildBookmarklet, sanitizePirateswap, isPirateswapOrigin, BOOKMARKLET_VERSION,
+} from "./pirateswap.js";
 
 const PS_KEY = "tu-pirateswap";
 const SITE_SHORT = { tradeit: "TI", pirateswap: "PS" };
@@ -387,6 +389,7 @@ function showPirateswapStatus() {
 function setupPirateswap() {
   const calcUrl = `${location.origin}${location.pathname}`;
   $("psLink").href = buildBookmarklet(skins, calcUrl);
+  $("psVersion").textContent = `v${BOOKMARKLET_VERSION}`;
   $("psLink").addEventListener("click", (e) => {
     e.preventDefault();
     alert("Dra länken till bokmärkesfältet i stället för att klicka. "
