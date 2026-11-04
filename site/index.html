@@ -28,7 +28,7 @@
   button:hover { border-color: var(--accent); }
   .num { width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
   .inputs { display: grid; gap: 6px; }
-  .in-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px 110px 96px 30px;
+  .in-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px 110px 96px 30px 30px;
     gap: 6px; align-items: center; }
   .in-row .idx { color: var(--muted); text-align: right; }
   .in-row .skin { width: 100%; border-left: 4px solid var(--line); font-weight: 500; }
@@ -57,9 +57,16 @@
   @media (max-width: 700px) {
     .in-row.head { display: none; }
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .in-row { grid-template-columns: 18px minmax(0, 1fr) 80px 30px; }
-    .in-row .meta { grid-column: 2 / 3; }
-    .in-row .price { grid-column: 3 / 4; }
+    /* Rad 1: nummer + skinnamn över hela bredden. Rad 2: info, float, pris, knappar. */
+    .in-row { grid-template-columns: 18px minmax(0, 1fr) 74px 74px 30px 30px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+    .in-row .idx { grid-row: 1; grid-column: 1 / 2; }
+    .in-row .skin { grid-row: 1; grid-column: 2 / -1; }
+    .in-row .meta { grid-row: 2; grid-column: 2 / 3; }
+    .in-row .fl { grid-row: 2; grid-column: 3 / 4; width: 100%; }
+    .in-row .price { grid-row: 2; grid-column: 4 / 5; width: 100%; }
+    .in-row .copy { grid-row: 2; grid-column: 5 / 6; }
+    .in-row .del { grid-row: 2; grid-column: 6 / 7; }
   }
 </style>
 </head>
@@ -86,7 +93,7 @@
       <select id="fcol" aria-label="Filtrera på collection"></select>
       <select id="frar" aria-label="Filtrera på rarity"></select>
     </div>
-    <div class="in-row head"><span></span><span>Skin</span><span>Float</span><span>Wear / collection</span><span>Pris $</span><span></span></div>
+    <div class="in-row head"><span></span><span>Skin</span><span>Float</span><span>Wear / collection</span><span>Pris $</span><span></span><span></span></div>
     <div class="inputs" id="inputs"></div>
     <datalist id="skinlist"></datalist>
   </section>

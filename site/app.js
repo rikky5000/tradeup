@@ -90,7 +90,7 @@ function buildInputs() {
     name.value = row.name;
 
     const fl = document.createElement("input");
-    fl.className = "num";
+    fl.className = "num fl";
     fl.type = "number";
     fl.step = "0.0001";
     fl.min = "0";
@@ -107,7 +107,13 @@ function buildInputs() {
     price.step = "0.01";
     price.min = "0";
 
+    const copy = document.createElement("button");
+    copy.className = "copy";
+    copy.textContent = "↓";
+    copy.title = "Kopiera raden till nästa tomma rad nedanför";
+
     const del = document.createElement("button");
+    del.className = "del";
     del.textContent = "×";
     del.title = "Töm raden";
 
@@ -144,6 +150,16 @@ function buildInputs() {
       refresh();
       recalc();
     });
+    copy.addEventListener("click", () => {
+      if (!row.name || i === rows.length - 1) return;
+      // Första tomma raden nedanför, annars raden direkt under. Upprepade
+      // tryck på rad 3 fyller alltså rad 4, 5, 6 ...
+      let target = rows.findIndex((r, j) => j > i && !r.name);
+      if (target === -1) target = i + 1;
+      rows[target] = { ...row };
+      buildInputs();
+      recalc();
+    });
     del.addEventListener("click", () => {
       Object.assign(row, { name: "", float: "", price: null });
       buildInputs();
@@ -152,7 +168,7 @@ function buildInputs() {
     });
 
     if (row.price != null) price.value = row.price;
-    el.append(idx, name, fl, meta, price, del);
+    el.append(idx, name, fl, meta, price, copy, del);
     wrap.append(el);
     refresh();
   });
