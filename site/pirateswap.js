@@ -100,15 +100,31 @@ export function psMain(P) {
   };
 
   // Lyssna på sidans egna sökresultat (både fetch och XMLHttpRequest).
+  // Prisfält i den ordning de används. Vanliga listan har "price"; stackade
+  // vyer brukar ha lägsta pris i ett eget fält.
+  const PRICE_KEYS = ["price", "lowestPrice", "minPrice", "fromPrice", "priceFrom", "minimalPrice"];
   const handle = (data) => {
     let added = 0;
-    for (const it of (data && data.items) || []) {
-      const n = it.marketHashName;
-      if (skinOf.has(n) && typeof it.price === "number" && it.price > 0) {
-        if (!(captured[n] <= it.price)) added++;
-        captured[n] = Math.min(it.price, captured[n] ?? Infinity);
+    // Gå igenom hela svaret och plocka alla objekt med skinnamn + pris,
+    // oavsett hur sidan grupperar dem.
+    const walk = (node, depth) => {
+      if (!node || typeof node !== "object" || depth > 8) return;
+      if (Array.isArray(node)) {
+        node.forEach((x) => walk(x, depth + 1));
+        return;
       }
-    }
+      const n = node.marketHashName;
+      if (typeof n === "string" && skinOf.has(n)) {
+        const key = PRICE_KEYS.find((k) => typeof node[k] === "number" && node[k] > 0);
+        if (key) {
+          const p = node[key];
+          if (!(captured[n] <= p)) added++;
+          captured[n] = Math.min(p, captured[n] ?? Infinity);
+        }
+      }
+      for (const v of Object.values(node)) if (v && typeof v === "object") walk(v, depth + 1);
+    };
+    walk(data, 0);
     if (added) {
       save();
       render();
@@ -118,7 +134,8 @@ export function psMain(P) {
   window.__tuHandle = handle;
   if (!window.__tuHooked) {
     window.__tuHooked = true;
-    const isInv = (u) => typeof u === "string" && u.includes("ExchangerInventory");
+    // Alla lageranrop (vanlig lista, stacked view m.m.).
+    const isInv = (u) => typeof u === "string" && /\/inventory\//i.test(u);
     const origFetch = window.fetch;
     window.fetch = async function tuFetch(...args) {
       const res = await origFetch.apply(this, args);
