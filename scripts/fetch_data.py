@@ -105,18 +105,62 @@ def fetch_tradeit_prices(wanted: set[str], max_pages: int, delay: float) -> dict
     return prices
 
 
+def filter_collections(skins: list[dict], wanted: list[str]) -> list[dict]:
+    """Behåller skins vars collection innehåller något av namnen (t.ex. "Harlequin")."""
+    keys = [w.lower() for w in wanted]
+    return [s for s in skins if any(k in s["collection"].lower() for k in keys)]
+
+
+def fetch_prices_by_search(skins: list[dict], delay: float) -> dict[str, float]:
+    """Söker upp varje skin på tradeit (en sökning per skin ger alla wears och
+    StatTrak) och sparar lägsta listpris per exakt namn."""
+    wanted = wanted_names(skins)
+    prices: dict[str, float] = {}
+    for n, s in enumerate(skins, 1):
+        # Sök på mönsternamnet ("Rose Hex"); resultaten filtreras på exakt namn.
+        query = s["name"].split(" | ", 1)[-1]
+        params = {
+            "gameId": 730, "offset": 0, "limit": PAGE_SIZE, "sortType": "Price - low",
+            "searchValue": query, "minFloat": 0, "maxFloat": 1, "showTradeLock": "true",
+            "onlyTradeLock": "false", "showUserListing": "true", "stickerName": "",
+            "context": "trade", "fresh": "true", "isForStore": 0,
+        }
+        data = get_json(f"{TRADEIT_URL}?{urllib.parse.urlencode(params)}")
+        for it in data.get("items") or []:
+            name, price = it.get("name"), it.get("price")
+            if name in wanted and isinstance(price, (int, float)) and price > 0:
+                prices[name] = min(price / 100, prices.get(name, float("inf")))
+        print(f"  {n}/{len(skins)} {s['name']}")
+        time.sleep(delay)
+    return prices
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="site/data.json")
+    ap.add_argument("--collections", default="collections.json",
+                    help="JSON-lista med collections att hämta priser för (tom = alla)")
     ap.add_argument("--max-pages", type=int, default=800)
     ap.add_argument("--delay", type=float, default=1.2)
     args = ap.parse_args()
 
     skins = load_skins()
     print(f"skins: {len(skins)}")
-    prices = fetch_tradeit_prices(wanted_names(skins), args.max_pages, args.delay)
+    path = Path(args.collections)
+    chosen = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    if chosen:
+        skins = filter_collections(skins, chosen)
+        found = sorted({s["collection"] for s in skins})
+        print(f"collections: {found} ({len(skins)} skins)")
+        missing = [c for c in chosen if not any(c.lower() in f.lower() for f in found)]
+        if missing:
+            print(f"Hittade inte: {missing}", file=sys.stderr)
+            return 1
+        prices = fetch_prices_by_search(skins, args.delay)
+    else:
+        prices = fetch_tradeit_prices(wanted_names(skins), args.max_pages, args.delay)
     print(f"priser: {len(prices)}")
-    if len(prices) < 50:
+    if len(prices) < min(50, len(skins)):
         print("För få priser – något är fel, avbryter utan att skriva över.", file=sys.stderr)
         return 1
 
