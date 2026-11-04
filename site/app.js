@@ -1,0 +1,298 @@
+import {
+  RARITIES, INPUT_COUNT, computeTradeUp, evaluate, wearOf, marketName, distanceToWearEdge,
+} from "./tradeup.js";
+
+const $ = (id) => document.getElementById(id);
+const usd = (v) => (v == null ? "–" : `${v < 0 ? "−" : ""}$${Math.abs(v).toFixed(2)}`);
+const signedUsd = (v) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${usd(v)}`);
+const pct = (v) => `${(v * 100).toFixed(1)}%`;
+
+let skins = [];
+let byName = new Map();
+let prices = {};
+// rows[i] = {name, float, price (manuellt pris eller null)}
+let rows = Array.from({ length: INPUT_COUNT }, () => ({ name: "", float: "", price: null }));
+
+function priceOf(name) {
+  const p = prices[name];
+  return typeof p === "number" ? p : null;
+}
+
+function stattrak() { return $("st").checked; }
+function divisor() { return Number($("div").value) || 1.15; }
+
+function autoPrice(row) {
+  const skin = byName.get(row.name);
+  const f = Number(row.float);
+  if (!skin || row.float === "" || Number.isNaN(f)) return null;
+  return priceOf(marketName(skin, wearOf(f), stattrak()));
+}
+
+function updateDatalist() {
+  const first = rows.map((r) => byName.get(r.name)).find(Boolean);
+  const list = skins
+    .filter((s) => (!first || s.rarity === first.rarity) && s.rarity < RARITIES.length - 1)
+    .filter((s) => !stattrak() || s.stattrak);
+  const dl = $("skinlist");
+  dl.replaceChildren(...list.map((s) => {
+    const o = document.createElement("option");
+    o.value = s.name;
+    o.label = `${RARITIES[s.rarity]} · ${s.collection}`;
+    return o;
+  }));
+}
+
+function buildInputs() {
+  const wrap = $("inputs");
+  wrap.replaceChildren();
+  rows.forEach((row, i) => {
+    const el = document.createElement("div");
+    el.className = "in-row";
+
+    const idx = document.createElement("span");
+    idx.className = "idx";
+    idx.textContent = i + 1;
+
+    const name = document.createElement("input");
+    name.className = "skin";
+    name.setAttribute("list", "skinlist");
+    name.placeholder = "Sök skin…";
+    name.value = row.name;
+
+    const fl = document.createElement("input");
+    fl.className = "num";
+    fl.type = "number";
+    fl.step = "0.0001";
+    fl.min = "0";
+    fl.max = "1";
+    fl.placeholder = "float";
+    fl.value = row.float;
+
+    const meta = document.createElement("span");
+    meta.className = "meta";
+
+    const price = document.createElement("input");
+    price.className = "num price";
+    price.type = "number";
+    price.step = "0.01";
+    price.min = "0";
+
+    const del = document.createElement("button");
+    del.textContent = "×";
+    del.title = "Töm raden";
+
+    const refresh = () => {
+      const skin = byName.get(row.name);
+      const f = Number(row.float);
+      const parts = [];
+      if (skin && row.float !== "" && !Number.isNaN(f)) parts.push(wearOf(f));
+      if (skin) parts.push(skin.collection.replace(/^The | Collection$/g, ""));
+      if (skin) parts.push(`${skin.min}–${skin.max}`);
+      meta.textContent = parts.join(" · ");
+      meta.title = meta.textContent;
+      const auto = autoPrice(row);
+      price.classList.toggle("manual", row.price != null);
+      if (row.price == null) {
+        price.value = auto != null ? auto.toFixed(2) : "";
+        price.placeholder = skin && row.float !== "" ? "saknas" : "";
+      }
+    };
+    el.refresh = refresh;
+
+    name.addEventListener("change", () => {
+      row.name = byName.has(name.value) ? name.value : "";
+      if (!row.name) name.value = "";
+      updateDatalist();
+      refreshAll();
+    });
+    fl.addEventListener("input", () => { row.float = fl.value; refresh(); recalc(); });
+    price.addEventListener("input", () => {
+      row.price = price.value === "" ? null : Number(price.value);
+      refresh();
+      recalc();
+    });
+    del.addEventListener("click", () => {
+      Object.assign(row, { name: "", float: "", price: null });
+      buildInputs();
+      updateDatalist();
+      recalc();
+    });
+
+    if (row.price != null) price.value = row.price;
+    el.append(idx, name, fl, meta, price, del);
+    wrap.append(el);
+    refresh();
+  });
+}
+
+function refreshAll() {
+  for (const el of $("inputs").children) el.refresh();
+  recalc();
+}
+
+function card(k, v, cls = "") {
+  const d = document.createElement("div");
+  d.className = "card";
+  const a = document.createElement("div");
+  a.className = "k";
+  a.textContent = k;
+  const b = document.createElement("div");
+  b.className = `v ${cls}`;
+  b.textContent = v;
+  d.append(a, b);
+  return d;
+}
+
+function cell(tr, text, cls = "") {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (cls) td.className = cls;
+  tr.append(td);
+  return td;
+}
+
+function recalc() {
+  saveHash();
+  const body = $("resultBody");
+  body.replaceChildren();
+  const inputs = rows.map((r) => ({ skin: byName.get(r.name), float: r.float === "" ? NaN : Number(r.float) }));
+  if (!inputs.some((i) => i.skin)) {
+    body.innerHTML = '<p class="small">Välj 10 inputs.</p>';
+    return;
+  }
+  const result = computeTradeUp(inputs, skins, { stattrak: stattrak() });
+  if (result.errors.length) {
+    const ul = document.createElement("ul");
+    ul.className = "errors";
+    for (const e of result.errors) {
+      const li = document.createElement("li");
+      li.textContent = e;
+      ul.append(li);
+    }
+    body.append(ul);
+    return;
+  }
+
+  const costs = rows.map((r) => (r.price != null ? r.price : autoPrice(r)));
+  const e = evaluate(result, costs, priceOf, { intakeDivisor: divisor(), stattrak: stattrak() });
+
+  const cards = document.createElement("div");
+  cards.className = "cards";
+  cards.append(
+    card("Kostnad (10 inputs)", usd(e.cost)),
+    card("Förväntat värde (EV)", usd(e.ev)),
+    card("Förväntad vinst", signedUsd(e.profit), e.profit >= 0 ? "good" : "bad"),
+    card("Avkastning", e.roi == null ? "–" : `${e.roi >= 0 ? "+" : "−"}${pct(Math.abs(e.roi))}`,
+      e.roi >= 0 ? "good" : "bad"),
+    card("Chans till vinst", pct(e.chanceProfit)),
+    card("Snitt normaliserad float", result.avgNorm.toFixed(5)),
+  );
+  body.append(cards);
+
+  const notes = [];
+  if (e.missingInputPrices) notes.push(`${e.missingInputPrices} input(s) saknar pris – kostnaden är för låg.`);
+  if (e.pricedShare < 0.9999) {
+    notes.push(`Outcomes motsvarande ${pct(1 - e.pricedShare)} sannolikhet saknar tradeit-pris – EV är för lågt räknat.`);
+  }
+  for (const n of notes) {
+    const p = document.createElement("p");
+    p.className = "note";
+    p.textContent = `⚠ ${n}`;
+    body.append(p);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "tablewrap";
+  wrap.style.marginTop = "14px";
+  const t = document.createElement("table");
+  t.innerHTML = "<thead><tr><th>Outcome</th><th>Chans</th><th>Float</th><th>Wear</th>"
+    + "<th>Listpris</th><th>Inbytesvärde</th><th>Vinst</th></tr></thead>";
+  const tb = document.createElement("tbody");
+  for (const r of e.rows) {
+    const tr = document.createElement("tr");
+    const first = cell(tr, r.name);
+    const sub = document.createElement("div");
+    sub.className = "small";
+    sub.textContent = r.skin.collection;
+    first.append(sub);
+    const c = cell(tr, pct(r.prob));
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.width = `${Math.max(2, r.prob * 100)}%`;
+    c.append(bar);
+    const near = distanceToWearEdge(r.float) < 0.001;
+    cell(tr, `${r.float.toFixed(5)}${near ? " ⚠" : ""}`, near ? "warn" : "").title = near
+      ? "Mycket nära en wear-gräns – avrundning kan ge en annan wear." : "";
+    cell(tr, r.wear);
+    cell(tr, usd(r.list));
+    cell(tr, usd(r.value));
+    cell(tr, signedUsd(r.profit),
+      r.profit == null ? "" : r.profit >= 0 ? "good" : "bad");
+    tb.append(tr);
+  }
+  t.append(tb);
+  wrap.append(t);
+  body.append(wrap);
+}
+
+// Spara uppställningen i adressen så att den går att bokmärka och dela.
+function saveHash() {
+  const state = {
+    st: stattrak() ? 1 : 0,
+    d: divisor(),
+    r: rows.map((r) => [r.name, r.float, r.price]),
+  };
+  const s = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  history.replaceState(null, "", `#${s}`);
+}
+
+function loadHash() {
+  if (!location.hash) return;
+  try {
+    const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
+    $("st").checked = !!state.st;
+    if (state.d) $("div").value = state.d;
+    (state.r || []).slice(0, INPUT_COUNT).forEach(([name, float, price], i) => {
+      rows[i] = { name: byName.has(name) ? name : "", float: float ?? "", price: price ?? null };
+    });
+  } catch {
+    // Trasig länk – börja tomt.
+  }
+}
+
+async function init() {
+  try {
+    const res = await fetch("data.json", { cache: "no-cache" });
+    const data = await res.json();
+    skins = data.skins;
+    byName = new Map(skins.map((s) => [s.name, s]));
+    prices = data.prices || {};
+    const when = new Date(data.updated);
+    $("status").textContent = Number.isNaN(when.getTime())
+      ? `${Object.keys(prices).length} priser`
+      : `Priser från tradeit.gg, uppdaterade ${when.toLocaleString("sv-SE")} · ${Object.keys(prices).length} priser`;
+  } catch (err) {
+    $("status").textContent = `Kunde inte ladda data.json (${err}).`;
+    return;
+  }
+  loadHash();
+  buildInputs();
+  updateDatalist();
+  recalc();
+
+  $("st").addEventListener("change", () => { updateDatalist(); refreshAll(); });
+  $("div").addEventListener("input", recalc);
+  $("copy1").addEventListener("click", () => {
+    rows = rows.map(() => ({ ...rows[0] }));
+    buildInputs();
+    recalc();
+  });
+  $("clear").addEventListener("click", () => {
+    rows = rows.map(() => ({ name: "", float: "", price: null }));
+    buildInputs();
+    updateDatalist();
+    recalc();
+  });
+}
+
+init();
