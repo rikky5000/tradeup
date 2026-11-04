@@ -8,6 +8,15 @@ Räknar på CS2-trade-ups med priser från tradeit.gg. Sidan finns på
 - **Inbytesvärde:** listpris ÷ 1,15 som standard. Det går att ändra på sidan.
 - **Spara eller dela:** uppställningen sparas i adressen, så det går att bokmärka den.
 
+## Välj collections
+Ändra `collections.json` för att välja vilka collections som hämtas priser för. Det räcker med en del av namnet:
+```json
+["Harlequin", "Radiant", "Ascent", "Achroma"]
+```
+Bara skins i de här collections visas på sidan och får priser. Med en tom lista, `[]`, hämtas hela tradeits lager, vilket tar betydligt längre tid.
+Så här ändrar du på GitHub: öppna filen, klicka på pennan (✏️), ändra och klicka på **Commit changes**. Sidan uppdateras automatiskt efter ett par minuter.
+
+## Uppdatering
 Priserna uppdateras var 6:e timme av GitHub Actions (`.github/workflows/deploy.yml`). Om du vill uppdatera direkt: gå till **Actions → Uppdatera priser och publicera → Run workflow**.
 
 ## Regler
