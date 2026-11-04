@@ -81,13 +81,31 @@ export function psMain(P) {
     const qs = [...queries];
     const prices = {};
     let errors = 0;
+    // Prova först utan cookies (som sidan själv), sedan med. Det sätt som
+    // fungerar används för resten av sökningarna.
+    const modes = ["omit", "include"];
+    let mode = null;
+    const get = async (url) => {
+      if (mode) return fetch(url, { credentials: mode });
+      let last;
+      for (const m of modes) {
+        try {
+          const r = await fetch(url, { credentials: m });
+          mode = m;
+          return r;
+        } catch (e) {
+          last = e;
+        }
+      }
+      throw new Error(`${last && last.message} (provade utan och med cookies)`);
+    };
     for (let i = 0; i < qs.length && !stopped; i++) {
       for (let page = 1; page <= MAX_PAGES && !stopped; page++) {
         const url = `${API}?orderBy=price&sortOrder=ASC&page=${page}&results=${PAGE}`
           + `&searchPhrase=${encodeURIComponent(qs[i])}`;
         let items = [];
         try {
-          const r = await fetch(url, { credentials: "include" });
+          const r = await get(url);
           if (r.status === 429) {
             status.textContent = "Pirateswap ber oss sakta ner – väntar 20 s…";
             await sleep(20000);
@@ -98,9 +116,10 @@ export function psMain(P) {
           items = (await r.json()).items || [];
         } catch (e) {
           errors++;
-          if (errors >= 5) {
-            status.textContent = `Avbröt efter upprepade fel (${e.message}). `
-              + "Ladda om pirateswap.com och försök igen.";
+          if (errors >= 5 || !mode) {
+            status.textContent = `Avbröt: ${e.message}\nSida: ${location.href}\n`
+              + "Ta en skärmdump av den här rutan och skicka till Claude.";
+            go.disabled = false;
             return;
           }
           await sleep(3000);
