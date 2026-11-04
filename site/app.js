@@ -364,6 +364,11 @@ function savePirateswap(next) {
   refreshAll();
 }
 
+// Nya priser ersätter gamla för samma skin; övriga ligger kvar.
+function mergePirateswap(clean) {
+  savePirateswap({ updated: clean.updated, prices: { ...ps.prices, ...clean.prices } });
+}
+
 function showPirateswapStatus() {
   const n = Object.keys(ps.prices).length;
   const el = $("psStatus");
@@ -394,8 +399,8 @@ function setupPirateswap() {
     if (!isPirateswapOrigin(e.origin)) return;
     const clean = sanitizePirateswap(e.data);
     if (!clean) return;
-    savePirateswap(clean);
-    e.source?.postMessage({ type: "tradeup-imported", count: Object.keys(clean.prices).length }, e.origin);
+    mergePirateswap(clean);
+    e.source?.postMessage({ type: "tradeup-imported", count: Object.keys(ps.prices).length }, e.origin);
   });
   // Öppnades sidan av bokmärket? Säg till att vi är redo att ta emot.
   if (window.opener) {
@@ -416,7 +421,7 @@ function setupPirateswap() {
       return;
     }
     $("psPaste").value = "";
-    savePirateswap(clean);
+    mergePirateswap(clean);
   });
   $("psClear").addEventListener("click", () => savePirateswap({ updated: null, prices: {} }));
 }
