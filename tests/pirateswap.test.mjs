@@ -31,6 +31,6 @@ test("bokmärket är en kodad javascript:-länk med skinlistan", () => {
   assert.ok(href.startsWith("javascript:"));
   assert.ok(!/[#\s™]/.test(href.slice(11)), "allt ska vara %-kodat");
   const code = decodeURIComponent(href.slice(11));
-  assert.ok(code.includes('["M4A1-S | Rose Hex","Radiant",0]'));
+  assert.ok(code.includes('["M4A1-S | Rose Hex","Radiant",0,0]'));
   assert.doesNotThrow(() => new Function(code)); // giltig JavaScript
 });

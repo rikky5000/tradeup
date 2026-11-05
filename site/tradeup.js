@@ -109,6 +109,29 @@ export function computeTradeUp(inputs, allSkins, { stattrak = false } = {}) {
 
 export const SITES = ["tradeit", "pirateswap"];
 
+export function souvenirName(skin, wear) {
+  return `Souvenir ${skin.name} (${wear})`;
+}
+
+/**
+ * Slår ihop normal- och souvenirpriser för en input: per sajt används det
+ * billigaste. Returnerar {prices: {sajt: pris}, souvenir: {sajt: true om
+ * souvenir var billigast}}. Outcomes ska aldrig gå via den här funktionen –
+ * de blir alltid normala skins.
+ */
+export function cheapestVariant(normal, souvenir) {
+  const prices = {};
+  const isSouvenir = {};
+  for (const s of SITES) {
+    const n = normal[s] > 0 ? normal[s] : null;
+    const v = souvenir && souvenir[s] > 0 ? souvenir[s] : null;
+    const useSouvenir = v != null && (n == null || v < n);
+    prices[s] = useSouvenir ? v : n;
+    isSouvenir[s] = useSouvenir;
+  }
+  return { prices, souvenir: isSouvenir };
+}
+
 /**
  * Inköpspris för en input. prices = {tradeit: listpris|null, pirateswap: ...}.
  * mode = en sajt eller "cheapest" (billigast av de som har pris).

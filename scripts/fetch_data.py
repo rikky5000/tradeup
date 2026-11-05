@@ -22,6 +22,8 @@ TRADEIT_URL = "https://tradeit.gg/api/v2/inventory/data"
 RARITIES = ["Consumer Grade", "Industrial Grade", "Mil-Spec Grade",
             "Restricted", "Classified", "Covert"]
 WEARS = ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"]
+# Höj när data.json får nytt innehåll, så att publicerad data inte återanvänds.
+DATA_FORMAT = 2  # 2: souvenir-flagga och souvenir-priser
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0 Safari/537.36",
@@ -60,18 +62,23 @@ def load_skins() -> list[dict]:
             "min": s["min_float"],
             "max": s["max_float"],
             "stattrak": bool(s.get("stattrak")),
+            "souvenir": bool(s.get("souvenir")),
             "weapon": (s.get("weapon") or {}).get("name", ""),
         })
     return out
 
 
 def wanted_names(skins: list[dict]) -> set[str]:
+    """Namnen vi vill ha pris på: normal, StatTrak och Souvenir (souvenir får
+    användas som input i trade-ups, men outcomes är alltid normala)."""
     names = set()
     for s in skins:
         for w in WEARS:
             names.add(f"{s['name']} ({w})")
             if s["stattrak"]:
                 names.add(f"StatTrak™ {s['name']} ({w})")
+            if s.get("souvenir"):
+                names.add(f"Souvenir {s['name']} ({w})")
     return names
 
 
@@ -147,6 +154,9 @@ def reuse_published(url: str, collections: set[str], out: str) -> bool:
     if old_cols != collections or not old.get("prices"):
         print("collections har ändrats, hämtar nya priser")
         return False
+    if old.get("format") != DATA_FORMAT:
+        print("dataformatet har ändrats, hämtar nya priser")
+        return False
     Path(out).write_text(json.dumps(old, ensure_ascii=False, separators=(",", ":")),
                          encoding="utf-8")
     print(f"återanvände priser från {old.get('updated')} ({len(old['prices'])} st)")
@@ -187,6 +197,7 @@ def main() -> int:
         return 1
 
     data = {
+        "format": DATA_FORMAT,
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "skins": skins,
         "prices": dict(sorted(prices.items())),

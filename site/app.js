@@ -1,6 +1,6 @@
 import {
   RARITIES, INPUT_COUNT, computeTradeUp, evaluate, wearOf, marketName, distanceToWearEdge,
-  pickBuy, pickSell,
+  pickBuy, pickSell, cheapestVariant, souvenirName,
 } from "./tradeup.js";
 import {
   buildBookmarklet, sanitizePirateswap, isPirateswapOrigin, BOOKMARKLET_VERSION,
@@ -50,21 +50,31 @@ function divisors() {
   };
 }
 
-function autoBuyFor(row, st, buy) {
+// Inköpspris för en input. Utan StatTrak får souvenir användas som input
+// (om allowSouvenir), och då väljs det billigaste av normal/souvenir per sajt.
+function autoBuyFor(row, st, buy, allowSouvenir) {
   const skin = byName.get(row.name);
   const f = Number(row.float);
   if (!skin || row.float === "" || Number.isNaN(f)) return null;
-  return pickBuy(sitePrices(marketName(skin, wearOf(f), st)), buy);
+  const wear = wearOf(f);
+  const normal = sitePrices(marketName(skin, wear, st));
+  if (st || !allowSouvenir) return pickBuy(normal, buy);
+  const v = cheapestVariant(normal, sitePrices(souvenirName(skin, wear)));
+  const pick = pickBuy(v.prices, buy);
+  return pick && { ...pick, souvenir: v.souvenir[pick.source] };
 }
 
+function allowSouvenir() { return $("souv").checked; }
+
 function autoBuy(row) {
-  return autoBuyFor(row, stattrak(), $("buy").value);
+  return autoBuyFor(row, stattrak(), $("buy").value, allowSouvenir());
 }
 
 // Uppställningen som ett rent objekt (används för länken och för sparade trade-ups).
 function currentState() {
   return {
     st: stattrak() ? 1 : 0,
+    sv: allowSouvenir() ? 1 : 0,
     d: divisors().tradeit,
     dp: divisors().pirateswap,
     b: $("buy").value,
@@ -92,7 +102,9 @@ function evalState(state) {
   const inputs = rs.map((r) => ({ skin: byName.get(r.name), float: r.float === "" ? NaN : Number(r.float) }));
   const result = computeTradeUp(inputs, skins, { stattrak: st });
   if (result.errors.length) return { result, e: null };
-  const costs = rs.map((r) => (r.price != null ? r.price : autoBuyFor(r, st, buy)?.price ?? null));
+  // Äldre sparade uppställningar saknar sv – då gäller standard (souvenir tillåten).
+  const sv = state.sv !== 0;
+  const costs = rs.map((r) => (r.price != null ? r.price : autoBuyFor(r, st, buy, sv)?.price ?? null));
   const e = evaluate(result, costs, (n) => pickSell(sitePrices(n), div, state.s || "tradeit"), { stattrak: st });
   return { result, e };
 }
@@ -200,8 +212,8 @@ function buildInputs() {
       if (row.price == null) {
         price.value = auto ? auto.price.toFixed(2) : "";
         price.placeholder = skin && row.float !== "" ? "saknas" : "";
-        price.title = auto ? `Pris från ${auto.source}` : "";
-        if (auto) meta.textContent += ` · ${SITE_SHORT[auto.source]}`;
+        price.title = auto ? `Pris från ${auto.source}${auto.souvenir ? " (souvenir)" : ""}` : "";
+        if (auto) meta.textContent += ` · ${SITE_SHORT[auto.source]}${auto.souvenir ? " Souv." : ""}`;
       } else {
         price.title = "Eget pris";
       }
@@ -369,6 +381,7 @@ function saveHash() {
 
 function applyState(state) {
   $("st").checked = !!state.st;
+  $("souv").checked = state.sv !== 0;
   if (state.d) $("div").value = state.d;
   if (state.dp) $("divps").value = state.dp;
   if (state.b) $("buy").value = state.b;
@@ -591,6 +604,7 @@ async function init() {
   recalc();
 
   $("st").addEventListener("change", () => { updateDatalist(); refreshAll(); });
+  $("souv").addEventListener("change", refreshAll);
   $("div").addEventListener("input", recalc);
   $("divps").addEventListener("input", recalc);
   $("buy").addEventListener("change", refreshAll);

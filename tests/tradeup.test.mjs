@@ -2,7 +2,29 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   computeTradeUp, evaluate, wearOf, normalizeFloat, marketName, distanceToWearEdge, pickBuy, pickSell,
+  cheapestVariant, souvenirName,
 } from "../site/tradeup.js";
+
+test("souvenir: billigast av normal/souvenir per sajt", () => {
+  const r = cheapestVariant(
+    { tradeit: 0.5, pirateswap: 0.4 },
+    { tradeit: 0.3, pirateswap: 0.45 },
+  );
+  assert.deepEqual(r.prices, { tradeit: 0.3, pirateswap: 0.4 });
+  assert.deepEqual(r.souvenir, { tradeit: true, pirateswap: false });
+  // Bara souvenir finns på en sajt -> den används.
+  const only = cheapestVariant({ tradeit: null, pirateswap: 0.4 }, { tradeit: 0.2, pirateswap: null });
+  assert.deepEqual(only.prices, { tradeit: 0.2, pirateswap: 0.4 });
+  // Utan souvenirpriser -> oförändrat.
+  assert.deepEqual(cheapestVariant({ tradeit: 0.5, pirateswap: null }, null).prices,
+    { tradeit: 0.5, pirateswap: null });
+  assert.equal(souvenirName({ name: "M4A1-S | Rose Hex" }, "Field-Tested"),
+    "Souvenir M4A1-S | Rose Hex (Field-Tested)");
+});
+
+test("outcomes använder alltid normalt namn (aldrig souvenir)", () => {
+  assert.equal(marketName({ name: "AWP | X" }, "Field-Tested", false), "AWP | X (Field-Tested)");
+});
 
 // Påhittade testskins (namnen spelar ingen roll för räkningen).
 const S = (name, collection, rarity, min = 0, max = 1, stattrak = true) =>

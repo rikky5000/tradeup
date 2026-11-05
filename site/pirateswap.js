@@ -18,10 +18,12 @@ export function psMain(P) {
 
   // Vilka namn vi bryr oss om, och vilket skin varje namn hör till.
   const skinOf = new Map();
-  for (const [name, , st] of P.skins) {
+  for (const [name, , st, sv] of P.skins) {
     for (const w of WEARS) {
       skinOf.set(`${name} (${w})`, name);
       if (st) skinOf.set(`StatTrak™ ${name} (${w})`, name);
+      // Souvenir får användas som input (kalkylatorn väljer billigast).
+      if (sv) skinOf.set(`Souvenir ${name} (${w})`, name);
     }
   }
   // Fångade priser överlever omladdning av sidan (sparas i den här webbläsaren).
@@ -207,14 +209,16 @@ export function psMain(P) {
 }
 
 // Höj vid varje ändring av psMain, så att användaren ser om bokmärket är gammalt.
-export const BOOKMARKLET_VERSION = 4;
+export const BOOKMARKLET_VERSION = 5;
 
 /** Bygger javascript:-länken med skinlistan (namn, collection, finns i StatTrak). */
 export function buildBookmarklet(skins, calcUrl) {
   const P = {
     v: BOOKMARKLET_VERSION,
     calc: calcUrl,
-    skins: skins.map((s) => [s.name, s.collection.replace(/^The | Collection$/g, ""), s.stattrak ? 1 : 0]),
+    skins: skins.map((s) => [
+      s.name, s.collection.replace(/^The | Collection$/g, ""), s.stattrak ? 1 : 0, s.souvenir ? 1 : 0,
+    ]),
   };
   // Koda allt: webbläsaren avkodar %-sekvenser innan koden körs, och tecken som
   // # och ™ skulle annars kunna förstöra länken.
