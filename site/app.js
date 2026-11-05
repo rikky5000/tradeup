@@ -50,15 +50,51 @@ function divisors() {
   };
 }
 
-function autoBuy(row) {
+function autoBuyFor(row, st, buy) {
   const skin = byName.get(row.name);
   const f = Number(row.float);
   if (!skin || row.float === "" || Number.isNaN(f)) return null;
-  return pickBuy(sitePrices(marketName(skin, wearOf(f), stattrak())), $("buy").value);
+  return pickBuy(sitePrices(marketName(skin, wearOf(f), st)), buy);
 }
 
-function autoPrice(row) {
-  return autoBuy(row)?.price ?? null;
+function autoBuy(row) {
+  return autoBuyFor(row, stattrak(), $("buy").value);
+}
+
+// Uppställningen som ett rent objekt (används för länken och för sparade trade-ups).
+function currentState() {
+  return {
+    st: stattrak() ? 1 : 0,
+    d: divisors().tradeit,
+    dp: divisors().pirateswap,
+    b: $("buy").value,
+    s: $("sell").value,
+    r: rows.map((r) => [r.name, r.float, r.price]),
+  };
+}
+
+function stateRows(state) {
+  return Array.from({ length: INPUT_COUNT }, (_, i) => {
+    const [name, float, price] = (state.r || [])[i] || [];
+    return { name: byName.has(name) ? name : "", float: float ?? "", price: price ?? null };
+  });
+}
+
+/**
+ * Räknar en uppställning med dagens priser, oberoende av vad som visas på
+ * sidan. Samma funktion används för huvudvyn och för sparade trade-ups.
+ */
+function evalState(state) {
+  const st = !!state.st;
+  const buy = state.b || "tradeit";
+  const div = { tradeit: Number(state.d) || 1.15, pirateswap: Number(state.dp) || 1.12 };
+  const rs = stateRows(state);
+  const inputs = rs.map((r) => ({ skin: byName.get(r.name), float: r.float === "" ? NaN : Number(r.float) }));
+  const result = computeTradeUp(inputs, skins, { stattrak: st });
+  if (result.errors.length) return { result, e: null };
+  const costs = rs.map((r) => (r.price != null ? r.price : autoBuyFor(r, st, buy)?.price ?? null));
+  const e = evaluate(result, costs, (n) => pickSell(sitePrices(n), div, state.s || "tradeit"), { stattrak: st });
+  return { result, e };
 }
 
 function updateDatalist() {
@@ -236,14 +272,14 @@ function cell(tr, text, cls = "") {
 
 function recalc() {
   saveHash();
+  renderSaved();
   const body = $("resultBody");
   body.replaceChildren();
-  const inputs = rows.map((r) => ({ skin: byName.get(r.name), float: r.float === "" ? NaN : Number(r.float) }));
-  if (!inputs.some((i) => i.skin)) {
+  if (!rows.some((r) => byName.has(r.name))) {
     body.innerHTML = '<p class="small">Välj 10 inputs.</p>';
     return;
   }
-  const result = computeTradeUp(inputs, skins, { stattrak: stattrak() });
+  const { result, e } = evalState(currentState());
   if (result.errors.length) {
     const ul = document.createElement("ul");
     ul.className = "errors";
@@ -256,10 +292,11 @@ function recalc() {
     return;
   }
 
-  const costs = rows.map((r) => (r.price != null ? r.price : autoPrice(r)));
-  const div = divisors();
-  const sell = $("sell").value;
-  const e = evaluate(result, costs, (n) => pickSell(sitePrices(n), div, sell), { stattrak: stattrak() });
+  const saveBtn = document.createElement("button");
+  saveBtn.textContent = "💾 Spara trade-up";
+  saveBtn.style.marginBottom = "12px";
+  saveBtn.addEventListener("click", () => saveCurrent(e));
+  body.append(saveBtn);
 
   const cards = document.createElement("div");
   cards.className = "cards";
@@ -326,33 +363,136 @@ function recalc() {
 
 // Spara uppställningen i adressen så att den går att bokmärka och dela.
 function saveHash() {
-  const state = {
-    st: stattrak() ? 1 : 0,
-    d: divisors().tradeit,
-    dp: divisors().pirateswap,
-    b: $("buy").value,
-    s: $("sell").value,
-    r: rows.map((r) => [r.name, r.float, r.price]),
-  };
-  const s = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  const s = btoa(unescape(encodeURIComponent(JSON.stringify(currentState()))));
   history.replaceState(null, "", `#${s}`);
+}
+
+function applyState(state) {
+  $("st").checked = !!state.st;
+  if (state.d) $("div").value = state.d;
+  if (state.dp) $("divps").value = state.dp;
+  if (state.b) $("buy").value = state.b;
+  if (state.s) $("sell").value = state.s;
+  rows = stateRows(state);
 }
 
 function loadHash() {
   if (!location.hash || location.hash === "#ps-import") return;
   try {
-    const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
-    $("st").checked = !!state.st;
-    if (state.d) $("div").value = state.d;
-    if (state.dp) $("divps").value = state.dp;
-    if (state.b) $("buy").value = state.b;
-    if (state.s) $("sell").value = state.s;
-    (state.r || []).slice(0, INPUT_COUNT).forEach(([name, float, price], i) => {
-      rows[i] = { name: byName.has(name) ? name : "", float: float ?? "", price: price ?? null };
-    });
+    applyState(JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1))))));
   } catch {
     // Trasig länk – börja tomt.
   }
+}
+
+// ---- Sparade trade-ups (i den här webbläsaren) ----
+const SAVED_KEY = "tu-saved";
+
+function loadSaved() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SAVED_KEY));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeSaved(list) {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+  } catch {
+    alert("Kunde inte spara – webbläsaren tillåter inte lagring (privat läge?).");
+  }
+  renderSaved();
+}
+
+function snapshot(e) {
+  return { cost: e.cost, ev: e.ev, profit: e.profit, chance: e.chanceProfit };
+}
+
+// Förslag på namn: "7× Galil AR | Sky Mandala + 3× MP9 | Bee-Tron".
+function defaultName() {
+  const counts = new Map();
+  for (const r of rows) if (r.name) counts.set(r.name, (counts.get(r.name) || 0) + 1);
+  return [...counts].map(([n, c]) => `${c}× ${n}`).join(" + ");
+}
+
+function saveCurrent(e) {
+  const name = prompt("Namn på trade-upen:", defaultName());
+  if (name === null) return;
+  const list = loadSaved();
+  list.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: name.trim() || defaultName(),
+    savedAt: new Date().toISOString(),
+    state: currentState(),
+    then: snapshot(e),
+  });
+  storeSaved(list);
+}
+
+function renderSaved() {
+  const body = $("savedBody");
+  if (!body) return;
+  const list = loadSaved();
+  body.replaceChildren();
+  if (!list.length) {
+    body.innerHTML = '<p class="small">Inga sparade än. Räkna fram en trade-up och tryck på 💾 Spara trade-up.</p>';
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "tablewrap";
+  const t = document.createElement("table");
+  t.innerHTML = "<thead><tr><th>Trade-up</th><th>Kostnad då → nu</th><th>EV då → nu</th>"
+    + "<th>Vinst då → nu</th><th>Ändring</th><th>Chans nu</th><th></th></tr></thead>";
+  const tb = document.createElement("tbody");
+  for (const item of list) {
+    const now = evalState(item.state).e;
+    const tr = document.createElement("tr");
+    const first = cell(tr, item.name);
+    first.className = "saved-name";
+    const sub = document.createElement("div");
+    sub.className = "small";
+    sub.textContent = `Sparad ${new Date(item.savedAt).toLocaleString("sv-SE")}`;
+    first.append(sub);
+    const arrow = (a, b, fmt) => (b == null ? `${fmt(a)} → –` : `${fmt(a)} → ${fmt(b)}`);
+    cell(tr, arrow(item.then.cost, now?.cost, usd));
+    cell(tr, arrow(item.then.ev, now?.ev, usd));
+    cell(tr, arrow(item.then.profit, now?.profit, signedUsd), now ? (now.profit >= 0 ? "good" : "bad") : "");
+    const delta = now ? now.profit - item.then.profit : null;
+    cell(tr, delta == null ? "kan inte räknas" : signedUsd(delta),
+      delta == null ? "warn" : delta > 0.005 ? "good" : delta < -0.005 ? "bad" : "");
+    cell(tr, now ? pct(now.chanceProfit) : "–");
+    const actions = document.createElement("td");
+    actions.className = "saved-actions";
+    const btn = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", fn);
+      actions.append(b);
+    };
+    btn("Öppna", "Ladda in den här trade-upen i kalkylatorn", () => {
+      applyState(item.state);
+      buildInputs();
+      updateDatalist();
+      refreshAll();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    btn("↻", "Spara om med dagens värden som ny jämförelsepunkt", () => {
+      if (!now) return;
+      storeSaved(loadSaved().map((x) => (x.id === item.id
+        ? { ...x, savedAt: new Date().toISOString(), then: snapshot(now) } : x)));
+    });
+    btn("×", "Ta bort", () => {
+      if (confirm(`Ta bort "${item.name}"?`)) storeSaved(loadSaved().filter((x) => x.id !== item.id));
+    });
+    tr.append(actions);
+    tb.append(tr);
+  }
+  t.append(tb);
+  wrap.append(t);
+  body.append(wrap);
 }
 
 function savePirateswap(next) {
