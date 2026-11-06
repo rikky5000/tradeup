@@ -39,6 +39,13 @@
     background: var(--accent); color: #111; font-weight: 600; text-decoration: none; cursor: grab; }
   textarea { width: 100%; font: 12px monospace; color: var(--text); background: var(--panel2);
     border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-top: 6px; }
+  h3 { font-size: 14px; margin: 16px 0 8px; }
+  .chip { display: inline-block; border: 1px solid; border-radius: 10px; padding: 0 7px; margin-left: 6px;
+    font-size: 12px; font-variant-numeric: tabular-nums; }
+  details.inv-col { border-bottom: 1px solid var(--line); padding: 6px 0; }
+  details.inv-col summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; }
+  details.inv-col .inv-name { min-width: 160px; font-weight: 500; }
+  details.inv-col ul { margin: 6px 0 4px; padding-left: 22px; font-size: 13px; }
   td.saved-name { white-space: normal; min-width: 180px; max-width: 320px; }
   td.saved-actions { display: flex; gap: 4px; justify-content: flex-end; }
   td.saved-actions button { padding: 4px 8px; }
@@ -151,6 +158,22 @@
   <section class="panel" id="result">
     <h2>Resultat</h2>
     <div id="resultBody"><p class="small">Välj 10 inputs.</p></div>
+  </section>
+
+  <section class="panel">
+    <h2>Mitt inventory</h2>
+    <p id="invStatus" class="small"></p>
+    <ol class="small steps">
+      <li>Dra den här knappen till bokmärkesfältet: <a id="invLink" class="bm" href="#">🎒 Hämta inventory</a>
+        (senaste: <b id="invVersion"></b>)</li>
+      <li>Öppna ditt inventory på <b>steamcommunity.com</b> (Profil → Inventory) och klicka på bokmärket.</li>
+      <li>Tryck <b>Skicka till kalkylatorn</b>. Inventoryt sparas bara i den här webbläsaren.</li>
+    </ol>
+    <div id="invBody"></div>
+    <details class="small" style="margin-top:10px">
+      <summary>Rensa</summary>
+      <button id="invClear" style="margin-top:6px">Rensa inventory</button>
+    </details>
   </section>
 
   <section class="panel">

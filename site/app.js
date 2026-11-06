@@ -5,8 +5,12 @@ import {
 import {
   buildBookmarklet, sanitizePirateswap, isPirateswapOrigin, BOOKMARKLET_VERSION,
 } from "./pirateswap.js";
+import {
+  buildSteamBookmarklet, sanitizeInventory, isSteamOrigin, summarizeInventory, STEAM_BOOKMARKLET_VERSION,
+} from "./inventory.js";
 
 const PS_KEY = "tu-pirateswap";
+const INV_KEY = "tu-inventory";
 const SITE_SHORT = { tradeit: "TI", pirateswap: "PS" };
 
 const $ = (id) => document.getElementById(id);
@@ -390,7 +394,7 @@ function applyState(state) {
 }
 
 function loadHash() {
-  if (!location.hash || location.hash === "#ps-import") return;
+  if (!location.hash || location.hash === "#ps-import" || location.hash === "#inv-import") return;
   try {
     applyState(JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1))))));
   } catch {
@@ -582,6 +586,132 @@ function setupPirateswap() {
   $("psClear").addEventListener("click", () => savePirateswap({ updated: null, prices: {} }));
 }
 
+// ---- Mitt inventory (från Steam-bokmärket, sparas i webbläsaren) ----
+function loadInventory() {
+  try {
+    return JSON.parse(localStorage.getItem(INV_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function saveInventory(inv) {
+  try {
+    if (inv) localStorage.setItem(INV_KEY, JSON.stringify(inv));
+    else localStorage.removeItem(INV_KEY);
+  } catch {
+    alert("Kunde inte spara inventoryt – webbläsaren tillåter inte lagring (privat läge?).");
+  }
+  renderInventory();
+}
+
+function rarityChip(r, text) {
+  const s = document.createElement("span");
+  s.className = "chip";
+  s.style.color = RARITY_COLORS[r];
+  s.style.borderColor = RARITY_COLORS[r];
+  s.textContent = text;
+  return s;
+}
+
+function renderInventory() {
+  const inv = loadInventory();
+  const body = $("invBody");
+  body.replaceChildren();
+  if (!inv || !Object.keys(inv.items || {}).length) {
+    $("invStatus").textContent = "Inget inventory inläst än.";
+    return;
+  }
+  const total = Object.values(inv.items).reduce((a, it) => a + it.n, 0);
+  $("invStatus").textContent = `${total} vapenskins, hämtade ${new Date(inv.updated).toLocaleString("sv-SE")}`;
+  const sum = summarizeInventory(inv.items);
+
+  // Per rarity: hur många fulla trade-ups det räcker till.
+  const wrap = document.createElement("div");
+  wrap.className = "tablewrap";
+  const t = document.createElement("table");
+  t.innerHTML = "<thead><tr><th>Rarity</th><th>Antal</th><th>Fulla trade-ups</th><th>Rest</th>"
+    + "<th>Saknas till nästa</th><th>StatTrak</th><th>ST trade-ups</th><th>ST saknas</th></tr></thead>";
+  const tb = document.createElement("tbody");
+  sum.byRarity.normal.forEach((n, r) => {
+    const s = sum.byRarity.stattrak[r];
+    const tr = document.createElement("tr");
+    const first = cell(tr, RARITIES[r]);
+    first.style.color = RARITY_COLORS[r];
+    cell(tr, String(n.count));
+    cell(tr, String(n.full), n.full ? "good" : "");
+    cell(tr, String(n.rest));
+    cell(tr, n.missing ? String(n.missing) : "–", n.missing ? "warn" : "");
+    cell(tr, String(s.count));
+    cell(tr, String(s.full), s.full ? "good" : "");
+    cell(tr, s.missing ? String(s.missing) : "–");
+    tb.append(tr);
+  });
+  t.append(tb);
+  wrap.append(t);
+  body.append(wrap);
+  const note = document.createElement("p");
+  note.className = "small";
+  note.textContent = "Normal och souvenir räknas ihop (souvenir får vara input). StatTrak kan bara kombineras "
+    + "med StatTrak. Trade-ups kan blanda collections, så siffrorna ovan gäller per rarity totalt.";
+  body.append(note);
+
+  // Per collection, med skinlistan i en utfällbar rad.
+  const h = document.createElement("h3");
+  h.textContent = "Per collection";
+  body.append(h);
+  const known = new Set(skins.map((s) => s.collection));
+  for (const [col, c] of sum.byCollection) {
+    const d = document.createElement("details");
+    d.className = "inv-col";
+    const s = document.createElement("summary");
+    const name = document.createElement("span");
+    name.className = "inv-name";
+    name.textContent = shortCollection(col) + (known.has(col) ? "" : " (ej i kalkylatorn)");
+    if (!known.has(col)) name.style.color = "var(--muted)";
+    s.append(name);
+    RARITIES.forEach((_, r) => {
+      const n = c.normal[r];
+      const st = c.stattrak[r];
+      const text = [n ? String(n) : "", st ? `${st} ST` : ""].filter(Boolean).join(" + ");
+      if (text) s.append(rarityChip(r, text));
+    });
+    d.append(s);
+    const ul = document.createElement("ul");
+    for (const sk of c.skins) {
+      const li = document.createElement("li");
+      li.style.color = RARITY_COLORS[sk.rarity];
+      const locked = sk.count - sk.tradable;
+      li.textContent = `${sk.count}× ${sk.name}${locked ? ` (${locked} låsta)` : ""}`;
+      ul.append(li);
+    }
+    d.append(ul);
+    body.append(d);
+  }
+}
+
+function setupInventory() {
+  const calcUrl = `${location.origin}${location.pathname}`;
+  $("invLink").href = buildSteamBookmarklet(calcUrl);
+  $("invVersion").textContent = `v${STEAM_BOOKMARKLET_VERSION}`;
+  $("invLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    alert("Dra länken till bokmärkesfältet i stället för att klicka. "
+      + "Öppna sedan ditt inventory på steamcommunity.com och klicka på bokmärket där.");
+  });
+  window.addEventListener("message", (e) => {
+    if (!isSteamOrigin(e.origin)) return;
+    const clean = sanitizeInventory(e.data);
+    if (!clean) return;
+    saveInventory(clean);
+    e.source?.postMessage({ type: "tradeup-inventory-imported", count: Object.keys(clean.items).length }, e.origin);
+  });
+  $("invClear").addEventListener("click", () => {
+    if (confirm("Rensa inventoryt från kalkylatorn?")) saveInventory(null);
+  });
+  renderInventory();
+}
+
 async function init() {
   try {
     const res = await fetch("data.json", { cache: "no-cache" });
@@ -605,6 +735,7 @@ async function init() {
 
   $("st").addEventListener("change", () => { updateDatalist(); refreshAll(); });
   $("souv").addEventListener("change", refreshAll);
+  setupInventory();
   $("div").addEventListener("input", recalc);
   $("divps").addEventListener("input", recalc);
   $("buy").addEventListener("change", refreshAll);
